@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import torchvision.transforms as transforms
 from torchvision.datasets import Flowers102
 from src.datasets import GaussianNoiseDataset, SaltPepperNoiseDataset
@@ -10,9 +11,21 @@ salt_pepper_save_path = "./results/salt_pepper_noisy_dataset.pt"
 
 print(f"[{datetime.datetime.now()}] Starting ... ")
 
+class ToNumpy:
+    def __call__(self, sample):
+        """
+        Convert a PyTorch tensor or PIL image to a NumPy array.
+        """
+        if isinstance(sample, torch.Tensor):
+            return sample.numpy()  # Convert Tensor to NumPy
+        elif hasattr(sample, "convert"):  # Check if it's a PIL Image
+            return np.array(sample)  # Convert PIL to NumPy
+        else:
+            raise TypeError("Input must be a PIL image or a Tensor")
+
 transform = transforms.Compose([
     transforms.Resize((128, 128)),
-    transforms.ToTensor()
+    ToNumpy()
 ])
 
 train_dataset = Flowers102(root="./data", split="train", download=True, transform=transform)

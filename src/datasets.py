@@ -5,16 +5,16 @@ import numpy as np
 from torch.utils.data import DataLoader
 from skimage.util import random_noise
 import copy
+from skimage.metrics import peak_signal_noise_ratio as psnr
+from skimage.metrics import structural_similarity as ssim
 
 def add_gaussian_noise(img):
-    img_np = img.numpy()
-    img_noisy = random_noise(img_np, mode='gaussian', var=0.5, clip=True)
-    return torch.tensor(img_noisy, dtype=torch.float32)
+    return random_noise(img, mode='gaussian', var=0.5, clip=True)
+    #return torch.tensor(img_noisy, dtype=torch.float32)
 
 def add_salt_and_pepper_noise(img, prob=0.5):
-    img_np = img.numpy()
-    img_noisy = random_noise(img_np, mode='s&p', amount=prob, clip=True)
-    return torch.tensor(img_noisy, dtype=torch.float32)
+    return random_noise(img, mode='s&p', amount=prob, clip=True)
+    #return torch.tensor(img_noisy, dtype=torch.float32)
 
 class NoisyDataset(Dataset):
     def __init__(self, dataset):
@@ -30,13 +30,9 @@ class NoisyDataset(Dataset):
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
         img_noisy = self.add_noise(img.clone())
-        return img, img_noisy, label
+        return np.squeeze(img), np.squeeze(img_noisy), label
 
     def calculate_psnr_ssim(self):
-        # Initialisiere die Torchmetrics-Metriken
-        psnr_metric = torchmetrics.image.PeakSignalNoiseRatio(data_range=1.0)
-        ssim_metric = torchmetrics.image.StructuralSimilarityIndexMeasure(data_range=1.0)
-
         psnr_values = []
         ssim_values = []
 
@@ -44,14 +40,9 @@ class NoisyDataset(Dataset):
         for idx in range(len(self)):
             original, noisy, _ = self[idx]
 
-            # Falls nötig, bringe die Bilder auf die richtige Form (B, C, H, W)
-            if len(original.shape) == 3:  # Falls einzelne Bilder (C, H, W) → (1, C, H, W)
-                original = original.unsqueeze(0)
-                noisy = noisy.unsqueeze(0)
-
             # Berechne PSNR & SSIM mit Torchmetrics
-            psnr_value = psnr_metric(original, noisy).item()
-            ssim_value = ssim_metric(original, noisy).item()
+            psnr_value = psnr(original, noisy, data_range=1)
+            ssim_value = ssim(original, noisy, data_range=1, channel_axis=2)
 
             psnr_values.append(psnr_value)
             ssim_values.append(ssim_value)
@@ -77,7 +68,7 @@ class GaussianNoiseDataset(NoisyDataset):
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
         img_gaussian, _ = self.dataset_noisy[idx]
-        return img, img_gaussian, label
+        return np.squeeze(img), np.squeeze(img_gaussian), label
 
 class SaltPepperNoiseDataset(NoisyDataset):
     def __init__(self, dataset):
@@ -94,4 +85,4 @@ class SaltPepperNoiseDataset(NoisyDataset):
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
         img_gaussian, _ = self.dataset_noisy[idx]
-        return img, img_gaussian, label
+        return np.squeeze(img), np.squeeze(img_gaussian), label
