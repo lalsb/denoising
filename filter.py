@@ -1,82 +1,100 @@
-import torch
-import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader
-from scipy.ndimage import gaussian_filter, uniform_filter, median_filter
+import os
+import datetime
+import cv2  # OpenCV for loading, processing, and saving images
+from skimage.metrics import structural_similarity
+import numpy as np
 
-# Gobal vars
-gaussian_save_path = "./results/gaussian_noisy_dataset.pt"
-salt_pepper_save_path = "./results/salt_pepper_noisy_dataset.pt"
+# Global variables
+original_path = "./results/original"
+gaussian_path = "./results/gaussian"
+salt_pepper_path = "./results/salt_pepper"
+denoised_path = "./results/denoised"
+image_size = (128, 128)
 
-# Laden
-loaded_gaussian_dataset = torch.load(gaussian_save_path, weights_only=False)
-loaded_salt_pepper_dataset = torch.load(salt_pepper_save_path, weights_only=False)
+print(f"[{datetime.datetime.now()}] Starting denoising process...")
 
-gaussian_dataloader = DataLoader(loaded_gaussian_dataset, shuffle=True)
-salt_pepper_dataloader = DataLoader(loaded_salt_pepper_dataset, shuffle=True)    
+def load_images_from_folder(folder_path):
+    images = []
+    for filename in sorted(os.listdir(folder_path)):
+        if filename.endswith('.png'):
+            img_path = os.path.join(folder_path, filename)
+            img = cv2.imread(img_path)  # Read image in BGR format
+            if img is not None:
+                images.append(img)
+    return images
 
-#Lade 1 Bild aus jedem Datensatz
-original_gaussian, noisy_gaussian, label_gaussian = next(iter(gaussian_dataloader))
-original_salt_pepper, noisy_salt_pepper, label_salt_pepper = next(iter(salt_pepper_dataloader))
+def apply_median_filter(image):
+    # OpenCV's median blur filter
+    return cv2.medianBlur(image, 5)
 
-# Konvertiere Tensoren zu NumPy-Arrays für die Darstellung
-original_gaussian = original_gaussian.squeeze().numpy().transpose(1, 2, 0)
-noisy_gaussian = noisy_gaussian.squeeze().numpy().transpose(1, 2, 0)
+def apply_mean_filter(image): 
+    # OpenCV's non-local means denoising (for color images)
+    return cv2.fastNlMeansDenoisingColored(image, None, 10, 10, 7, 21)
+
+def apply_gaussian_filter(image):
+    # OpenCV's Gaussian blur
+    return cv2.GaussianBlur(image, (5, 5), 0)
+
+def calculate_psnr(original, denoised):
+    return cv2.PSNR(original, denoised)
+
+def calculate_ssim(original, denoised):
+    return structural_similarity(original, denoised, channel_axis=2, data_range=255)
+
+def denoise_and_evaluate(dataset, original_dataset, dataset_name):
+    os.makedirs(denoised_path, exist_ok=True)
+    os.makedirs(denoised_path + "/median", exist_ok=True)
+    os.makedirs(denoised_path + "/mean", exist_ok=True)
+    os.makedirs(denoised_path + "/gaussian", exist_ok=True)
     
-original_salt_pepper = original_salt_pepper.squeeze().numpy().transpose(1, 2, 0)
-noisy_salt_pepper = noisy_salt_pepper.squeeze().numpy().transpose(1, 2, 0)
+    print(f"[{datetime.datetime.now()}] Loading complete. Processing images ...")
 
-denoised_gaussian_gaus = gaussian_filter(noisy_gaussian, sigma=1)
-denoised_gaussian_mean = uniform_filter(noisy_gaussian, size=5)
-denoised_gaussian_median = median_filter(noisy_gaussian, size=5)
+    # Show the first pair of original and noisy images
+    first_comparison_done = False
 
-# Erstelle das Plot
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    for i, noisy_image in enumerate(dataset):
+        original = original_dataset[i]
 
-# Zeige das Bild mit Gaussian Noise
-axes[0, 0].imshow(noisy_gaussian)
-axes[0, 0].set_title('Noisy - Gaussian Noise')
-axes[0, 0].axis('off')
-    
-axes[0, 1].imshow(denoised_gaussian_gaus)
-axes[0, 1].set_title('Denoised Gaus')
-axes[0, 1].axis('off')
-    
-# Zeige das Bild mit Salt and Pepper Noise
-axes[1, 0].imshow(denoised_gaussian_mean)
-axes[1, 0].set_title('Denoised Mean')
-axes[1, 0].axis('off')
-    
-axes[1, 1].imshow(denoised_gaussian_median)
-axes[1, 1].set_title('Denoised Median')
-axes[1, 1].axis('off')
-    
-plt.tight_layout()
-plt.show()
+        # Apply filters
+        median_denoised = apply_median_filter(noisy_image)
+        mean_denoised = apply_mean_filter(noisy_image)
+        gaussian_denoised = apply_gaussian_filter(noisy_image)
+        
+        # Calculate PSNR and SSIM
+        median_psnr = calculate_psnr(original, median_denoised)
+        median_ssim = calculate_ssim(original, median_denoised)
+        
+        mean_psnr = calculate_psnr(original, mean_denoised)
+        mean_ssim = calculate_ssim(original, mean_denoised)
+        
+        gaussian_psnr = calculate_psnr(original, gaussian_denoised)
+        gaussian_ssim = calculate_ssim(original, gaussian_denoised)
+        
+        # Save results as PNG images
+        cv2.imwrite(os.path.join(denoised_path + "/median", f"{dataset_name}_median_{i+1:04d}.png"), median_denoised)
+        cv2.imwrite(os.path.join(denoised_path + "/mean", f"{dataset_name}_mean_{i+1:04d}.png"), mean_denoised)
+        cv2.imwrite(os.path.join(denoised_path + "/gaussian", f"{dataset_name}_gaussian_{i+1:04d}.png"), gaussian_denoised)
 
-denoised_sp_gaus = gaussian_filter(noisy_salt_pepper, sigma=1)
-denoised_sp_mean = uniform_filter(noisy_salt_pepper, size=5)
-denoised_sp_median = median_filter(noisy_salt_pepper, size=5)
+        if not first_comparison_done:
+            # Show comparison of the first pair of original and noisy images
+            combined_image = np.hstack((original, noisy_image, median_denoised, mean_denoised, gaussian_denoised))  # Stack images horizontally
+            cv2.imshow("Original vs Noisy vs Filtered Image", combined_image)
+            cv2.waitKey(0)  # Wait until the user presses a key
+            cv2.destroyAllWindows()  # Close the window
+            first_comparison_done = True
+        
+        if(i % 100 == 0):
+            print(f"[{datetime.datetime.now()}] {i} of 2040 - (PSNR, SSIM): Median ({median_psnr:.2f}, {median_ssim:.3f}), "
+                  f"Mean ({mean_psnr:.2f}, {mean_ssim:.3f}), Gaussian ({gaussian_psnr:.2f}, {gaussian_ssim:.3f})")
 
-# Erstelle das Plot
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-
-# Zeige das Bild mit Gaussian Noise
-axes[0, 0].imshow(noisy_salt_pepper)
-axes[0, 0].set_title('Noisy- SP Noise')
-axes[0, 0].axis('off')
+if __name__ == "__main__":
+    # Load datasets from directories (original, gaussian, and salt_pepper images)
+    original_dataset = load_images_from_folder(original_path)
+    gaussian_dataset = load_images_from_folder(gaussian_path)
+    salt_pepper_dataset = load_images_from_folder(salt_pepper_path)
     
-axes[0, 1].imshow(denoised_sp_gaus)
-axes[0, 1].set_title('Denoised Gaus')
-axes[0, 1].axis('off')
+    # Denoise and evaluate both datasets
+    denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
+    denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
     
-# Zeige das Bild mit Salt and Pepper Noise
-axes[1, 0].imshow(denoised_sp_mean)
-axes[1, 0].set_title('Denoised Mean')
-axes[1, 0].axis('off')
-    
-axes[1, 1].imshow(denoised_sp_median)
-axes[1, 1].set_title('Denoised Median')
-axes[1, 1].axis('off')
-    
-plt.tight_layout()
-plt.show()
+    print(f"[{datetime.datetime.now()}] Denoising complete.")

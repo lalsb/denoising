@@ -1,58 +1,93 @@
-import torch
 import numpy as np
-import torchvision.transforms as transforms
-from torchvision.datasets import Flowers102
-from src.datasets import GaussianNoiseDataset, SaltPepperNoiseDataset
-import datetime 
+from skimage.util import random_noise
+from math import sqrt
+import scipy.io
+import os
+import datetime
+import cv2  # OpenCV for saving images as PNG
 
-# Gobal vars
-gaussian_save_path = "./results/gaussian_noisy_dataset.pt"
-salt_pepper_save_path = "./results/salt_pepper_noisy_dataset.pt"
+# Global variables
+data_path = "./data/flowers-102/jpg"
+mat_file_path = "./data/flowers-102/imagelabels.mat"
+split_file_path = "./data/flowers-102/setid.mat"
+original_path = "./results/original"
+gaussian_path = "./results/gaussian"
+salt_pepper_path = "./results/salt_pepper"
+image_size = (128, 128)
 
-print(f"[{datetime.datetime.now()}] Starting ... ")
+def load_matlab_splits():
+    """
+    Load MATLAB files containing dataset splits and labels.
+    """
+    labels = scipy.io.loadmat(mat_file_path)["labels"].flatten()
+    splits = scipy.io.loadmat(split_file_path)
+    train = splits["trnid"].flatten()
+    val = splits["valid"].flatten()
+    
+    selected_indices = np.concatenate((train, val)) - 1  # Convert to 0-based index
+    return selected_indices, labels
 
-class ToNumpy:
-    def __call__(self, sample):
-        """
-        Convert a PyTorch tensor or PIL image to a NumPy array.
-        """
-        if isinstance(sample, torch.Tensor):
-            return sample.numpy()  # Convert Tensor to NumPy
-        elif hasattr(sample, "convert"):  # Check if it's a PIL Image
-            return np.array(sample)  # Convert PIL to NumPy
+def load_and_preprocess_image(image_path):
+    # Use OpenCV to load the image (which will be in BGR format)
+    image = cv2.imread(image_path)
+    image_resized = cv2.resize(image, image_size)
+    return image_resized
+
+def add_gaussian_noise(image, std):
+    noise = np.random.normal(0, std, image.shape).astype(np.uint8)
+    noisy_image = cv2.add(image, noise)
+    return noisy_image
+
+def add_salt_and_pepper_noise(image, ratio):
+    noisy_image = image.copy()
+    h, w, c = noisy_image.shape
+    noisy_pixels = int(h * w * ratio)
+ 
+    for _ in range(noisy_pixels):
+        row, col = np.random.randint(0, h), np.random.randint(0, w)
+        if np.random.rand() < 0.5:
+            noisy_image[row, col] = [0, 0, 0] 
         else:
-            raise TypeError("Input must be a PIL image or a Tensor")
+            noisy_image[row, col] = [255, 255, 255]
+ 
+    return noisy_image
 
-transform = transforms.Compose([
-    transforms.Resize((128, 128)),
-    ToNumpy()
-])
+def create_noisy_datasets():
+    """
+    Create datasets with Gaussian and salt & pepper noise, selecting 2040 images based on splits.
+    """
+    selected_indices, _ = load_matlab_splits()
+    
+    # Ensure the directories for saving images exist
+    os.makedirs(original_path, exist_ok=True)
+    os.makedirs(gaussian_path, exist_ok=True)
+    os.makedirs(salt_pepper_path, exist_ok=True)
+    
+    image_files = sorted([f for f in os.listdir(data_path) if f.endswith(('.jpg'))])
 
-train_dataset = Flowers102(root="./data", split="train", download=True, transform=transform)
-val_dataset = Flowers102(root="./data", split="val", download=True, transform=transform)
+    print(f"[{datetime.datetime.now()}] Loading complete. Processing images ...")
+    
+    for i, _ in enumerate(selected_indices):
+        if(i % 100 == 0):
+            print(f"[{datetime.datetime.now()}] {i} of 2040")
+                  
+        image_path = os.path.join(data_path, image_files[i])
+        image = load_and_preprocess_image(image_path)
+        
+        # Save original image as PNG
+        original_filename = os.path.join(original_path, f"image_{i+1:04d}.png")
+        cv2.imwrite(original_filename, image)
+        
+        # Add noise and save noisy images
+        gaussian_noisy_image = add_gaussian_noise(image, sqrt(0.5) * 255)
+        gaussian_filename = os.path.join(gaussian_path, f"image_{i+1:04d}_gaussian.png")
+        cv2.imwrite(gaussian_filename, gaussian_noisy_image)
+        
+        salt_pepper_noisy_image = add_salt_and_pepper_noise(image, 0.5)
+        salt_pepper_filename = os.path.join(salt_pepper_path, f"image_{i+1:04d}_salt_pepper.png")
+        cv2.imwrite(salt_pepper_filename, salt_pepper_noisy_image)
+        
+    print(f"[{datetime.datetime.now()}] Created and saved all 2040 PNGs.")
 
-selected_images = []
-
-# Interleaving the datasets
-for train_sample, val_sample in zip(train_dataset, val_dataset):
-    selected_images.append(train_sample)  # Append from trainDataset
-    selected_images.append(val_sample)    # Append from valDataset
-print(f"[{datetime.datetime.now()}] Successfully selected {len(selected_images)} out of 8189 images")
-
-gaussian_dataset = GaussianNoiseDataset(selected_images)
-salt_pepper_dataset = SaltPepperNoiseDataset(selected_images)
-
-# Save datasets
-torch.save(gaussian_dataset, gaussian_save_path)
-torch.save(salt_pepper_dataset, salt_pepper_save_path)
-print(f"[{datetime.datetime.now()}] Successfully created Gaussian Noise and Salt & Pepper Noise dataset")
-
-# PSNR und SSIM berechnen
-psnr_gaussian, ssim_gaussian = gaussian_dataset.calculate_psnr_ssim()
-psnr_sp, ssim_sp = salt_pepper_dataset.calculate_psnr_ssim()
-
-print(f"[{datetime.datetime.now()}] Gaussian Noise:\n [{datetime.datetime.now()}] - PSNR: {psnr_gaussian:.2f} dB\n [{datetime.datetime.now()}] - SSIM: {ssim_gaussian:.4f}")
-print(f"[{datetime.datetime.now()}] Salt & Pepper Noise:\n [{datetime.datetime.now()}] - PSNR: {psnr_sp:.2f} dB\n [{datetime.datetime.now()}] - SSIM: {ssim_sp:.4f}")
-
-print(f"[{datetime.datetime.now()}] Done.")
-
+if __name__ == "__main__":
+    create_noisy_datasets()
