@@ -30,7 +30,7 @@ class NoisyDataset(Dataset):
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
         img_noisy = self.add_noise(img.clone())
-        return np.squeeze(img), np.squeeze(img_noisy), label
+        return img, img_noisy, label
 
     def calculate_psnr_ssim(self):
         psnr_values = []
@@ -68,7 +68,7 @@ class GaussianNoiseDataset(NoisyDataset):
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
         img_gaussian, _ = self.dataset_noisy[idx]
-        return np.squeeze(img), np.squeeze(img_gaussian), label
+        return img, img_gaussian, label
 
 class SaltPepperNoiseDataset(NoisyDataset):
     def __init__(self, dataset):
@@ -85,4 +85,4 @@ class SaltPepperNoiseDataset(NoisyDataset):
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
         img_gaussian, _ = self.dataset_noisy[idx]
-        return np.squeeze(img), np.squeeze(img_gaussian), label
+        return img, img_gaussian, label

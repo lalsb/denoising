@@ -17,14 +17,19 @@ class ToNumpy:
         Convert a PyTorch tensor or PIL image to a NumPy array.
         """
         if isinstance(sample, torch.Tensor):
-            return sample.numpy()  # Convert Tensor to NumPy
+            np_sample = sample.numpy()
+            np_sample= np.transpose(np_sample, (1,2,0))
+            return np_sample
         elif hasattr(sample, "convert"):  # Check if it's a PIL Image
-            return np.array(sample)  # Convert PIL to NumPy
+            np_sample = np.array(sample)
+            np_sample= np.transpose(np_sample, (1,2,0))
+            return np_sample
         else:
             raise TypeError("Input must be a PIL image or a Tensor")
 
 transform = transforms.Compose([
     transforms.Resize((128, 128)),
+    transforms.ToTensor(),
     ToNumpy()
 ])
 
