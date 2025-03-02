@@ -25,6 +25,6 @@ def print_metrics(metrics, dataset_name=""):
     } for filter_name in metrics}
 
     for filter_name, mean_metric in mean_metrics.items():
-        print(f"{filter_name.capitalize()} (PSNR, SSIM): {mean_metric['mean_psnr']:.2f}, {mean_metric['mean_ssim']:.3f}")
+        print(f"{filter_name.capitalize()} (PSNR, SSIM): {mean_metric['mean_psnr']:.2f} dB, {mean_metric['mean_ssim']:.3f}")
 
     print("")

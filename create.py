@@ -1,10 +1,11 @@
 import os
 import cv2 
 import scipy.io
+import time
+import cProfile
 import numpy as np
 from math import sqrt
 from torchvision.datasets import Flowers102
-
 from config import DATA_DIR, SPLIT_FILE, ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, IMAGE_SIZE, MAX_IMAGES
 from utils import calculate_psnr, calculate_ssim, print_metrics
 
@@ -87,7 +88,13 @@ def create_noisy_datasets():
     
     print_metrics(metrics, "Mean")
 
-if __name__ == "__main__":
+def main():
+    start = time.time()
     print(f"Noising process ... ", end="")
     Flowers102(root="./data", split="train", download=True)
     create_noisy_datasets()
+    end = time.time()
+    print(f"Total time elapsed: {(end - start):.4f} s")
+
+if __name__ == "__main__":
+    cProfile.run('main()', sort = 1)

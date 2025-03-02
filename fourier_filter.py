@@ -1,5 +1,7 @@
 import os
 import cv2
+import time
+import cProfile
 import numpy as np
 from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES, NO_PREVIEW
 from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print_metrics
@@ -88,10 +90,16 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name):
 
     print_metrics(metrics, dataset_name)
 
-if __name__ == "__main__":
+def main():
+    start = time.time()
     print("Fourier denoising process ...", end="")
     original_dataset = load_images_from_folder(ORIGINAL_DIR)
     gaussian_dataset = load_images_from_folder(GAUSSIAN_DIR)
     salt_pepper_dataset = load_images_from_folder(SALT_PEPPER_DIR)
     denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
     denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
+    end = time.time()
+    print(f"Total time elapsed: {(end - start):.4f} s")
+
+if __name__ == "__main__":
+    cProfile.run('main()', sort = 1)
