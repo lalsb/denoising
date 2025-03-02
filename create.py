@@ -1,36 +1,23 @@
 import numpy as np
-from skimage.util import random_noise
 from math import sqrt
 import scipy.io
 import os
-import datetime
-import cv2  # OpenCV for saving images as PNG
-
-# Global variables
-data_path = "./data/flowers-102/jpg"
-mat_file_path = "./data/flowers-102/imagelabels.mat"
-split_file_path = "./data/flowers-102/setid.mat"
-original_path = "./results/original"
-gaussian_path = "./results/gaussian"
-salt_pepper_path = "./results/salt_pepper"
-image_size = (128, 128)
+import cv2 
+from config import DATA_DIR, SPLIT_FILE, ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, IMAGE_SIZE, MAX_IMAGES
+from utils import calculate_psnr, calculate_ssim, print_metrics
 
 def load_matlab_splits():
-    """
-    Load MATLAB files containing dataset splits and labels.
-    """
-    labels = scipy.io.loadmat(mat_file_path)["labels"].flatten()
-    splits = scipy.io.loadmat(split_file_path)
+    splits = scipy.io.loadmat(SPLIT_FILE)
     train = splits["trnid"].flatten()
     val = splits["valid"].flatten()
     
-    selected_indices = np.concatenate((train, val)) - 1  # Convert to 0-based index
-    return selected_indices, labels
+    selected_indices = np.concatenate((train, val)) - 1  # to 0-based index
+    selected_indices = selected_indices[:MAX_IMAGES]
+    return selected_indices
 
 def load_and_preprocess_image(image_path):
-    # Use OpenCV to load the image (which will be in BGR format)
     image = cv2.imread(image_path)
-    image_resized = cv2.resize(image, image_size)
+    image_resized = cv2.resize(image, IMAGE_SIZE)
     return image_resized
 
 def add_gaussian_noise(image, std):
@@ -54,40 +41,50 @@ def add_salt_and_pepper_noise(image, ratio):
 
 def create_noisy_datasets():
     """
-    Create datasets with Gaussian and salt & pepper noise, selecting 2040 images based on splits.
+    Create datasets with Gaussian and salt & pepper noise, selecting {MAX_IMAGES} images based on splits.
     """
-    selected_indices, _ = load_matlab_splits()
-    
-    # Ensure the directories for saving images exist
-    os.makedirs(original_path, exist_ok=True)
-    os.makedirs(gaussian_path, exist_ok=True)
-    os.makedirs(salt_pepper_path, exist_ok=True)
-    
-    image_files = sorted([f for f in os.listdir(data_path) if f.endswith(('.jpg'))])
+    selected_indices = load_matlab_splits()
 
-    print(f"[{datetime.datetime.now()}] Loading complete. Processing images ...")
+    metrics = {
+    'gaussian': {'psnrs': [], 'ssims': []},
+    'salt_pepper': {'psnrs': [], 'ssims': []}
+    }
     
+    os.makedirs(ORIGINAL_DIR, exist_ok=True)
+    os.makedirs(GAUSSIAN_DIR, exist_ok=True)
+    os.makedirs(SALT_PEPPER_DIR, exist_ok=True)
+    
+    image_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(('.jpg'))])
+
     for i, _ in enumerate(selected_indices):
-        if(i % 100 == 0):
-            print(f"[{datetime.datetime.now()}] {i} of 2040")
+        print(f"\rNoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
                   
-        image_path = os.path.join(data_path, image_files[i])
+        image_path = os.path.join(DATA_DIR, image_files[i])
         image = load_and_preprocess_image(image_path)
         
-        # Save original image as PNG
-        original_filename = os.path.join(original_path, f"image_{i+1:04d}.png")
+        # Save orignal images as PNGs
+        original_filename = os.path.join(ORIGINAL_DIR, f"image_{i+1:04d}.png")
         cv2.imwrite(original_filename, image)
         
-        # Add noise and save noisy images
+        # Apply gaussian noise and save images as PNGs
         gaussian_noisy_image = add_gaussian_noise(image, sqrt(0.5) * 255)
-        gaussian_filename = os.path.join(gaussian_path, f"image_{i+1:04d}_gaussian.png")
+        gaussian_filename = os.path.join(GAUSSIAN_DIR, f"image_{i+1:04d}_gaussian.png")
         cv2.imwrite(gaussian_filename, gaussian_noisy_image)
         
+        # Apply salt and pepper noise and save images as PNGs
         salt_pepper_noisy_image = add_salt_and_pepper_noise(image, 0.5)
-        salt_pepper_filename = os.path.join(salt_pepper_path, f"image_{i+1:04d}_salt_pepper.png")
+        salt_pepper_filename = os.path.join(SALT_PEPPER_DIR, f"image_{i+1:04d}_salt_pepper.png")
         cv2.imwrite(salt_pepper_filename, salt_pepper_noisy_image)
-        
-    print(f"[{datetime.datetime.now()}] Created and saved all 2040 PNGs.")
+
+        # Calculate PSNR and SSIM for each filter and store in the dictionary
+        metrics['gaussian']['psnrs'].append(calculate_psnr(image, gaussian_noisy_image))
+        metrics['gaussian']['ssims'].append(calculate_ssim(image, gaussian_noisy_image))
+
+        metrics['salt_pepper']['psnrs'].append(calculate_psnr(image, salt_pepper_noisy_image))
+        metrics['salt_pepper']['ssims'].append(calculate_ssim(image, salt_pepper_noisy_image))
+    
+    print_metrics(metrics, "Mean")
 
 if __name__ == "__main__":
+    print(f"Noising process ... ", end="")
     create_noisy_datasets()

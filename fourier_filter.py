@@ -1,30 +1,10 @@
 import os
-import datetime
 import cv2
 import numpy as np
-from skimage.metrics import structural_similarity
+from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES, NO_PREVIEW
+from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print_metrics
 
-# Global variables
-original_path = "./results/original"
-gaussian_path = "./results/gaussian"
-salt_pepper_path = "./results/salt_pepper"
-fourier_path = "./results/denoised/fourier"
-image_size = (128, 128)
-lowpass_cutoff = 32 
-
-print(f"[{datetime.datetime.now()}] Starting Fourier denoising process...")
-
-def load_images_from_folder(folder_path):
-    images = []
-    for filename in sorted(os.listdir(folder_path)):
-        if filename.endswith('.png'):
-            img_path = os.path.join(folder_path, filename)
-            img = cv2.imread(img_path)  # Read image in BGR format
-            if img is not None:
-                images.append(img)
-    return images
-
-def fourier_lowpass_filter(image, cutoff=30):
+def apply_fourier_lowpass_filter(image, cutoff=30):
     """
     Apply a Fourier low-pass filter to each color channel of the image using np.fft.
     :param image: Input image (BGR format).
@@ -67,53 +47,51 @@ def fourier_lowpass_filter(image, cutoff=30):
     
     return denoised_image
 
-def calculate_psnr(original, denoised):
-    return cv2.PSNR(original, denoised)
-
-def calculate_ssim(original, denoised):
-    return structural_similarity(original, denoised, channel_axis=2, data_range=255)
-
 def denoise_and_evaluate(dataset, original_dataset, dataset_name):
-    os.makedirs(fourier_path, exist_ok=True)
-    
-    print(f"[{datetime.datetime.now()}] Loading complete. Processing images ...")
+    os.makedirs(FOURIER_PATH, exist_ok=True)
 
-    # Show the first pair of original and noisy images
-    first_comparison_done = False
+    # ******************************************************** TEMP ***************************************
+    first_comparison_done = NO_PREVIEW
+    # ******************************************************** TEMP ***************************************
+
+    metrics = {
+    'fourier': {'psnrs': [], 'ssims': []}
+    }
 
     for i, noisy_image in enumerate(dataset):
         original = original_dataset[i]
 
         # Apply Fourier low-pass filter
-        fourier_denoised = fourier_lowpass_filter(noisy_image, cutoff=lowpass_cutoff)
+        fourier_denoised = apply_fourier_lowpass_filter(noisy_image, cutoff=LOWPASS_CUTOFF)
         
         # Calculate PSNR and SSIM
         fourier_psnr = calculate_psnr(original, fourier_denoised)
         fourier_ssim = calculate_ssim(original, fourier_denoised)
+
+         # Calculate PSNR and SSIM and store in the dictionary
+        metrics['fourier']['psnrs'].append(calculate_psnr(original, fourier_denoised))
+        metrics['fourier']['ssims'].append(calculate_ssim(original, fourier_denoised))
         
         # Save results as PNG images
-        cv2.imwrite(os.path.join(fourier_path, f"{dataset_name}_fourier_{i+1:04d}.png"), fourier_denoised)
+        cv2.imwrite(os.path.join(FOURIER_PATH, f"{dataset_name}_fourier_{i+1:04d}.png"), fourier_denoised)
 
+        # ******************************************************** TEMP ***************************************
         if not first_comparison_done:
-            # Show comparison of the first pair of original and noisy images
-            combined_image = np.hstack((original, noisy_image))  # Stack images horizontally
+            combined_image = np.hstack((original, noisy_image))
             cv2.imshow("Original vs Noisy Image", combined_image)
-            cv2.waitKey(0)  # Wait until the user presses a key
-            cv2.destroyAllWindows()  # Close the window
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
             first_comparison_done = True
+        # ******************************************************** TEMP ***************************************
         
-        
-        if i % 100 == 0:
-            print(f"[{datetime.datetime.now()}] {i} of 2040 - (PSNR, SSIM) ({fourier_psnr:.2f}, {fourier_ssim:.3f})")
+        print(f"\rFourier denoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
+
+    print_metrics(metrics, dataset_name)
 
 if __name__ == "__main__":
-    # Load datasets from directories (original, gaussian, and salt_pepper images)
-    original_dataset = load_images_from_folder(original_path)
-    gaussian_dataset = load_images_from_folder(gaussian_path)
-    salt_pepper_dataset = load_images_from_folder(salt_pepper_path)
-    
-    # Denoise and evaluate both datasets
+    print("Fourier denoising process ...", end="")
+    original_dataset = load_images_from_folder(ORIGINAL_DIR)
+    gaussian_dataset = load_images_from_folder(GAUSSIAN_DIR)
+    salt_pepper_dataset = load_images_from_folder(SALT_PEPPER_DIR)
     denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
     denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
-    
-    print(f"[{datetime.datetime.now()}] Fourier denoising complete.")
