@@ -1,8 +1,10 @@
-import numpy as np
-from math import sqrt
-import scipy.io
 import os
 import cv2 
+import scipy.io
+import numpy as np
+from math import sqrt
+from torchvision.datasets import Flowers102
+
 from config import DATA_DIR, SPLIT_FILE, ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, IMAGE_SIZE, MAX_IMAGES
 from utils import calculate_psnr, calculate_ssim, print_metrics
 
@@ -87,4 +89,5 @@ def create_noisy_datasets():
 
 if __name__ == "__main__":
     print(f"Noising process ... ", end="")
+    Flowers102(root="./data", split="train", download=True)
     create_noisy_datasets()
