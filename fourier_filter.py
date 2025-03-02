@@ -71,8 +71,8 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name):
         fourier_ssim = calculate_ssim(original, fourier_denoised)
 
          # Calculate PSNR and SSIM and store in the dictionary
-        metrics['fourier']['psnrs'].append(calculate_psnr(original, fourier_denoised))
-        metrics['fourier']['ssims'].append(calculate_ssim(original, fourier_denoised))
+        metrics['fourier']['psnrs'].append(fourier_psnr)
+        metrics['fourier']['ssims'].append(fourier_ssim)
         
         # Save results as PNG images
         cv2.imwrite(os.path.join(FOURIER_PATH, f"{dataset_name}_fourier_{i+1:04d}.png"), fourier_denoised)
