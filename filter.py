@@ -38,9 +38,7 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name):
 
         # Apply filters
         median_denoised = apply_median_filter(noisy_image)
-        median_t = time.time()
         mean_denoised = apply_mean_filter(noisy_image)
-        mean_t = time.time()
         gaussian_denoised = apply_gaussian_filter(noisy_image)
         
         # Calculate PSNR and SSIM for each filter and store in the dictionary

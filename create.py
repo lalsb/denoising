@@ -6,6 +6,7 @@ import cProfile
 import numpy as np
 from math import sqrt
 from torchvision.datasets import Flowers102
+from skimage.util import random_noise, img_as_float, img_as_ubyte
 from config import DATA_DIR, SPLIT_FILE, ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, IMAGE_SIZE, MAX_IMAGES
 from utils import calculate_psnr, calculate_ssim, print_metrics
 
@@ -23,24 +24,15 @@ def load_and_preprocess_image(image_path):
     image_resized = cv2.resize(image, IMAGE_SIZE)
     return image_resized
 
-def add_gaussian_noise(image, std):
-    noise = np.random.normal(0, std, image.shape).astype(np.uint8)
-    noisy_image = cv2.add(image, noise)
-    return noisy_image
-
-def add_salt_and_pepper_noise(image, ratio):
-    noisy_image = image.copy()
-    h, w, c = noisy_image.shape
-    noisy_pixels = int(h * w * ratio)
- 
-    for _ in range(noisy_pixels):
-        row, col = np.random.randint(0, h), np.random.randint(0, w)
-        if np.random.rand() < 0.5:
-            noisy_image[row, col] = [0, 0, 0] 
-        else:
-            noisy_image[row, col] = [255, 255, 255]
- 
-    return noisy_image
+def add_gaussian_noise(image, var):
+    image = img_as_float(image)
+    image = random_noise(image, mode='gaussian', var=var, clip=True)
+    return img_as_ubyte(image)
+7
+def add_salt_and_pepper_noise(image, amount):
+    image = img_as_float(image)
+    image = random_noise(image, mode='s&p', amount=amount, clip=True)
+    return img_as_ubyte(image)
 
 def create_noisy_datasets():
     """
@@ -59,6 +51,9 @@ def create_noisy_datasets():
     
     image_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(('.jpg'))])
 
+    #gaussian_files = []
+    #salt_pepper_files = []
+
     for i, _ in enumerate(selected_indices):
         print(f"\rNoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
                   
@@ -70,14 +65,16 @@ def create_noisy_datasets():
         cv2.imwrite(original_filename, image)
         
         # Apply gaussian noise and save images as PNGs
-        gaussian_noisy_image = add_gaussian_noise(image, sqrt(0.5) * 255)
+        gaussian_noisy_image = add_gaussian_noise(image, 0.5)
         gaussian_filename = os.path.join(GAUSSIAN_DIR, f"image_{i+1:04d}_gaussian.png")
         cv2.imwrite(gaussian_filename, gaussian_noisy_image)
+        #gaussian_files.append(gaussian_noisy_image)
         
         # Apply salt and pepper noise and save images as PNGs
         salt_pepper_noisy_image = add_salt_and_pepper_noise(image, 0.5)
         salt_pepper_filename = os.path.join(SALT_PEPPER_DIR, f"image_{i+1:04d}_salt_pepper.png")
         cv2.imwrite(salt_pepper_filename, salt_pepper_noisy_image)
+        #salt_pepper_files.append(salt_pepper_noisy_image)
 
         # Calculate PSNR and SSIM for each filter and store in the dictionary
         metrics['gaussian']['psnrs'].append(calculate_psnr(image, gaussian_noisy_image))
@@ -86,6 +83,8 @@ def create_noisy_datasets():
         metrics['salt_pepper']['psnrs'].append(calculate_psnr(image, salt_pepper_noisy_image))
         metrics['salt_pepper']['ssims'].append(calculate_ssim(image, salt_pepper_noisy_image))
     
+    #np.savez(f"{GAUSSIAN_DIR}/gaussian_files.npz", images = gaussian_files)
+    #np.savez(f"{SALT_PEPPER_DIR}/salt_pepper_files.npz", images = salt_pepper_files)
     print_metrics(metrics, "Mean")
 
 def main():
