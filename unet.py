@@ -16,7 +16,7 @@ from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print
 # Global vars
 TRAIN_EPOCHS = 100
 TEST_EPOCHS = 36
-BATCH_SIZE = None
+BATCH_SIZE = 16
 TRAIN_RATIO = 0.8
 
 # Dataset (noisy image, original image)
@@ -48,11 +48,78 @@ salt_pepper_train_datasets, salt_pepper_test_datasets = random_split(salt_pepper
 gaussian_dataloader = DataLoader(gaussian_train_datasets, shuffle=True, batch_size=BATCH_SIZE)
 salt_pepper_dataloader = DataLoader(salt_pepper_train_datasets, shuffle=True, batch_size=BATCH_SIZE) 
 
+# Definiere das U-Net Modell
+class UNet(nn.Module):
+    def __init__(self):
+        super(UNet, self).__init__()
+        
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+
+        
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 3, kernel_size=3, padding=1),
+            nn.Sigmoid()
+        )
+        
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+# Modell, Loss und Optimizer definieren
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = UNet().to(device)
+criterion = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training
+EPOCHS = 10
+for epoch in range(EPOCHS):
+    model.train()
+    total_loss = 0
+    for noisy_imgs, clean_imgs in gaussian_dataloader:
+        noisy_imgs, clean_imgs = noisy_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0, clean_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0
+        optimizer.zero_grad()
+        outputs = model(noisy_imgs)
+        loss = criterion(outputs, clean_imgs)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    print(f"Epoch [{epoch+1}/{EPOCHS}], Loss: {total_loss/len(gaussian_dataloader):.4f}")
+
+# Visualisierung eines Beispiels
+img_noisy = np.transpose(noisy_imgs[0].cpu().detach().numpy(), (1,2,0))
+img_noisy = (img_noisy * 255).astype(np.uint8)
+img_noisy = cv2.cvtColor(img_noisy, cv2.COLOR_BGR2RGB)
+
+img_out = np.transpose(outputs[0].cpu().detach().numpy(), (1,2,0))
+img_out = cv2.cvtColor(img_out, cv2.COLOR_BGR2RGB)
+img_out = (img_out * 255).astype(np.uint8)
+
+img_org = np.transpose(clean_imgs[0].cpu().detach().numpy(), (1,2,0))
+img_org = (img_org * 255).astype(np.uint8)
+img_org = cv2.cvtColor(img_org, cv2.COLOR_BGR2RGB)
+
+fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+axes[0].imshow(img_noisy)
+axes[0].set_title('Noisy Image')
+axes[1].imshow(img_out)
+axes[1].set_title('Denoised Image')
+axes[2].imshow(img_org)
+axes[2].set_title('Original Image')
+plt.show()
 
 
 
-
-
+'''
 #Lade 1 Bild aus jedem Datensatz
 noisy_gaussian, clean_gaussian = next(iter(gaussian_dataloader))
 noisy_salt_pepper, clean_salt_pepper = next(iter(salt_pepper_dataloader))
@@ -81,3 +148,4 @@ axes[1, 1].axis('off')
     
 plt.tight_layout()
 plt.show()
+'''
