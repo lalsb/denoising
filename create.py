@@ -6,7 +6,8 @@ import cProfile
 import numpy as np
 from math import sqrt
 from torchvision.datasets import Flowers102
-from skimage.util import random_noise, img_as_float, img_as_ubyte
+from skimage.util import random_noise, img_as_float, img_as_ubyte, dtype_limits
+from skimage.exposure import rescale_intensity
 from config import DATA_DIR, SPLIT_FILE, ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, IMAGE_SIZE, MAX_IMAGES
 from utils import calculate_psnr, calculate_ssim, print_metrics
 
@@ -25,9 +26,11 @@ def load_and_preprocess_image(image_path):
     return image_resized
 
 def add_gaussian_noise(image, var):
-    image = img_as_float(image)
-    image = random_noise(image, mode='gaussian', var=var, clip=True)
-    return img_as_ubyte(image)
+    float_image = img_as_float(image)
+    noised_image = random_noise(float_image, mode='gaussian', var=var,  clip=False)
+    normalized_image = rescale_intensity(noised_image, in_range = 'image', out_range = (0,1))
+    ubyte_image = img_as_ubyte(normalized_image)
+    return ubyte_image
 7
 def add_salt_and_pepper_noise(image, amount):
     image = img_as_float(image)
