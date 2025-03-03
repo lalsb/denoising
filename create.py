@@ -31,7 +31,7 @@ def add_gaussian_noise(image, var):
     normalized_image = rescale_intensity(noised_image, in_range = 'image', out_range = (0,1))
     ubyte_image = img_as_ubyte(normalized_image)
     return ubyte_image
-7
+
 def add_salt_and_pepper_noise(image, amount):
     image = img_as_float(image)
     image = random_noise(image, mode='s&p', amount=amount, clip=True)
