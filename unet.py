@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from skimage.util import random_noise, img_as_float, img_as_ubyte
-from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES, NO_PREVIEW
+from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR
 from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print_metrics
 
 # Global vars
