@@ -1,8 +1,8 @@
 import os
 import cv2
 import numpy as np
-from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, DENOISED_DIR, MAX_IMAGES, NO_PREVIEW
-from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print_metrics
+from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, DENOISED_DIR, MAX_IMAGES
+from utils import *
 import time
 import cProfile
 
@@ -16,15 +16,11 @@ def apply_mean_filter(image):
 def apply_gaussian_filter(image):
     return cv2.GaussianBlur(image, (5, 5), 0)
 
-def denoise_and_evaluate(dataset, original_dataset, dataset_name):
+def denoise_and_evaluate(img_array, original_img_array, name, save_to_disk=False):
     os.makedirs(DENOISED_DIR, exist_ok=True)
     os.makedirs(DENOISED_DIR + "/median", exist_ok=True)
     os.makedirs(DENOISED_DIR + "/mean", exist_ok=True)
     os.makedirs(DENOISED_DIR + "/gaussian", exist_ok=True)
-
-    # ******************************************************** TEMP ***************************************
-    first_comparison_done = NO_PREVIEW
-    # ******************************************************** TEMP ***************************************
 
     metrics = {
     'median': {'psnrs': [], 'ssims': []},
@@ -32,9 +28,8 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name):
     'gaussian': {'psnrs': [], 'ssims': []}
     }
 
-    for i, noisy_image in enumerate(dataset):
-        original = original_dataset[i]
-
+    for i, noisy_image in enumerate(img_array):
+        original = original_img_array[i]
 
         # Apply filters
         median_denoised = apply_median_filter(noisy_image)
@@ -51,34 +46,37 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name):
         metrics['gaussian']['psnrs'].append(calculate_psnr(original, gaussian_denoised))
         metrics['gaussian']['ssims'].append(calculate_ssim(original, gaussian_denoised))
         
-        # Save images as PNGs
-        cv2.imwrite(os.path.join(DENOISED_DIR + "/median", f"{dataset_name}_median_{i+1:04d}.png"), median_denoised)
-        cv2.imwrite(os.path.join(DENOISED_DIR + "/mean", f"{dataset_name}_mean_{i+1:04d}.png"), mean_denoised)
-        cv2.imwrite(os.path.join(DENOISED_DIR + "/gaussian", f"{dataset_name}_gaussian_{i+1:04d}.png"), gaussian_denoised)
-
-        # ******************************************************** TEMP ***************************************
-        if not first_comparison_done:
-            combined_image = np.hstack((original, noisy_image, median_denoised, mean_denoised, gaussian_denoised))
-            cv2.imshow("Original vs Noisy vs Filtered Image", combined_image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-            first_comparison_done = True
-        # ******************************************************** TEMP ***************************************
+        if(save_to_disk):
+            # Save images as PNGs
+            cv2.imwrite(os.path.join(DENOISED_DIR + "/median", f"{name}_median_{i+1:04d}.png"), median_denoised)
+            cv2.imwrite(os.path.join(DENOISED_DIR + "/mean", f"{name}_mean_{i+1:04d}.png"), mean_denoised)
+            cv2.imwrite(os.path.join(DENOISED_DIR + "/gaussian", f"{name}_gaussian_{i+1:04d}.png"), gaussian_denoised)
         
         print(f"\rDenoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
 
-    print_metrics(metrics, dataset_name)
+    return metrics
 
-def main():
+def denoise_and_evaluate_dataset(dataset, dataset_name):
+    start = time.time()
+    print("Denoising process ... ", end="")
+    noisy_images, clean_images = load_images_from_dataset(dataset)
+    metrics = denoise_and_evaluate(noisy_images, clean_images, dataset_name, save_to_disk=False)
+    end = time.time()
+    print(f"Total time elapsed: {(end - start):.4f} s")
+    return metrics
+
+def denoise_and_evaluate_default_folder():
     start = time.time()
     print("Denoising process ... ", end="")
     original_dataset = load_images_from_folder(ORIGINAL_DIR)
     gaussian_dataset = load_images_from_folder(GAUSSIAN_DIR)
     salt_pepper_dataset = load_images_from_folder(SALT_PEPPER_DIR)
-    denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
-    denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
+    gaussian_metrics = denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
+    print_metrics(gaussian_metrics, "gaussian")
+    salt_pepper_metrics = denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
+    print_metrics(salt_pepper_metrics, "salt_pepper")
     end = time.time()
     print(f"Total time elapsed: {(end - start):.4f} s")
 
 if __name__ == "__main__":
-    cProfile.run('main()', sort = 1)
+    cProfile.run('denoise_and_evaluate_default_folder()', sort = 1)

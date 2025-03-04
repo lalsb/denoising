@@ -3,8 +3,8 @@ import cv2
 import time
 import cProfile
 import numpy as np
-from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES, NO_PREVIEW
-from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print_metrics
+from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES
+from utils import *
 
 def apply_fourier_lowpass_filter(image, cutoff=30):
     """
@@ -49,12 +49,8 @@ def apply_fourier_lowpass_filter(image, cutoff=30):
     
     return denoised_image
 
-def denoise_and_evaluate(dataset, original_dataset, dataset_name):
+def denoise_and_evaluate(dataset, original_dataset, dataset_name, save_to_disk=False):
     os.makedirs(FOURIER_PATH, exist_ok=True)
-
-    # ******************************************************** TEMP ***************************************
-    first_comparison_done = NO_PREVIEW
-    # ******************************************************** TEMP ***************************************
 
     metrics = {
     'fourier': {'psnrs': [], 'ssims': []}
@@ -70,36 +66,35 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name):
         fourier_psnr = calculate_psnr(original, fourier_denoised)
         fourier_ssim = calculate_ssim(original, fourier_denoised)
 
-         # Calculate PSNR and SSIM and store in the dictionary
+        # Calculate PSNR and SSIM and store in the dictionary
         metrics['fourier']['psnrs'].append(fourier_psnr)
         metrics['fourier']['ssims'].append(fourier_ssim)
         
-        # Save results as PNG images
-        cv2.imwrite(os.path.join(FOURIER_PATH, f"{dataset_name}_fourier_{i+1:04d}.png"), fourier_denoised)
+        if(save_to_disk):
+            # Save results as PNGs
+            cv2.imwrite(os.path.join(FOURIER_PATH, f"{dataset_name}_fourier_{i+1:04d}.png"), fourier_denoised)
 
-        # ******************************************************** TEMP ***************************************
-        if not first_comparison_done:
-            combined_image = np.hstack((original, noisy_image))
-            cv2.imshow("Original vs Noisy Image", combined_image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-            first_comparison_done = True
-        # ******************************************************** TEMP ***************************************
-        
         print(f"\rFourier denoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
 
-    print_metrics(metrics, dataset_name)
+    return metrics
 
-def main():
+def denoise_and_evaluate_dataset(dataset, dataset_name):
+     noisy_images, clean_images = load_images_from_dataset(dataset)
+     metrics = denoise_and_evaluate(noisy_images, clean_images, dataset_name, save_to_disk=False)
+     return metrics
+
+def denoise_and_evaluate_default_folder():
     start = time.time()
     print("Fourier denoising process ...", end="")
     original_dataset = load_images_from_folder(ORIGINAL_DIR)
     gaussian_dataset = load_images_from_folder(GAUSSIAN_DIR)
     salt_pepper_dataset = load_images_from_folder(SALT_PEPPER_DIR)
-    denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
-    denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
+    gaussian_metrics = denoise_and_evaluate(gaussian_dataset, original_dataset, "gaussian")
+    print_metrics(gaussian_metrics, "gaussian")
+    salt_pepper_metrics = denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper")
+    print_metrics(salt_pepper_metrics, "salt_pepper")
     end = time.time()
     print(f"Total time elapsed: {(end - start):.4f} s")
 
 if __name__ == "__main__":
-    cProfile.run('main()', sort = 1)
+    cProfile.run('denoise_and_evaluate_default_folder()', sort = 1)

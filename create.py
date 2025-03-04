@@ -33,9 +33,16 @@ def add_gaussian_noise(image, var):
     return ubyte_image
 
 def add_salt_and_pepper_noise(image, amount):
-    image = img_as_float(image)
-    image = random_noise(image, mode='s&p', amount=amount, clip=True)
-    return img_as_ubyte(image)
+    float_image = img_as_float(image)
+    h, w, c = float_image.shape
+    num = int(amount * h * w)
+    mask = np.random.choice(h * w, num, replace=False)
+    salt = np.unravel_index(mask[:num // 2], (h, w))
+    pepper = np.unravel_index(mask[num // 2:], (h, w))
+    float_image[salt[0], salt[1], :] = 1
+    float_image[pepper[0], pepper[1], :] = 0
+    ubyte_image = img_as_ubyte(float_image)
+    return ubyte_image
 
 def create_noisy_datasets():
     """
