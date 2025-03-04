@@ -27,9 +27,11 @@ def load_and_preprocess_image(image_path):
 
 def add_gaussian_noise(image, var):
     float_image = img_as_float(image)
-    noised_image = random_noise(float_image, mode='gaussian', var=var,  clip=False)
-    normalized_image = rescale_intensity(noised_image, in_range = 'image', out_range = (0,1))
-    ubyte_image = img_as_ubyte(normalized_image)
+
+    noise = np.random.gauss(0, sqrt(var), float_image.shape)
+    noisy_image = float_image + noise
+    noisy_image = np.clip(noisy_image, 0, 1)
+    ubyte_image = img_as_ubyte(noisy_image)
     return ubyte_image
 
 def add_salt_and_pepper_noise(image, amount):

@@ -49,7 +49,7 @@ def apply_fourier_lowpass_filter(image, cutoff=30):
     
     return denoised_image
 
-def denoise_and_evaluate(dataset, original_dataset, dataset_name, save_to_disk=False):
+def denoise_and_evaluate(dataset, original_dataset, dataset_name="", save_to_disk=False):
     os.makedirs(FOURIER_PATH, exist_ok=True)
 
     metrics = {
@@ -78,9 +78,9 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name, save_to_disk=F
 
     return metrics
 
-def denoise_and_evaluate_dataset(dataset, dataset_name):
+def denoise_and_evaluate_dataset(dataset):
      noisy_images, clean_images = load_images_from_dataset(dataset)
-     metrics = denoise_and_evaluate(noisy_images, clean_images, dataset_name, save_to_disk=False)
+     metrics = denoise_and_evaluate(noisy_images, clean_images, save_to_disk=False)
      return metrics
 
 def denoise_and_evaluate_default_folder():

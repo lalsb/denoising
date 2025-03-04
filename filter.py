@@ -16,7 +16,7 @@ def apply_mean_filter(image):
 def apply_gaussian_filter(image):
     return cv2.GaussianBlur(image, (5, 5), 0)
 
-def denoise_and_evaluate(img_array, original_img_array, name, save_to_disk=False):
+def denoise_and_evaluate(img_array, original_img_array, name="", save_to_disk=False):
     os.makedirs(DENOISED_DIR, exist_ok=True)
     os.makedirs(DENOISED_DIR + "/median", exist_ok=True)
     os.makedirs(DENOISED_DIR + "/mean", exist_ok=True)
@@ -56,11 +56,11 @@ def denoise_and_evaluate(img_array, original_img_array, name, save_to_disk=False
 
     return metrics
 
-def denoise_and_evaluate_dataset(dataset, dataset_name):
+def denoise_and_evaluate_dataset(dataset):
     start = time.time()
     print("Denoising process ... ", end="")
     noisy_images, clean_images = load_images_from_dataset(dataset)
-    metrics = denoise_and_evaluate(noisy_images, clean_images, dataset_name, save_to_disk=False)
+    metrics = denoise_and_evaluate(noisy_images, clean_images, save_to_disk=False)
     end = time.time()
     print(f"Total time elapsed: {(end - start):.4f} s")
     return metrics
