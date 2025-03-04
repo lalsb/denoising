@@ -5,7 +5,7 @@ from utils import calculate_metrics_from_dataset, print_metrics, calculate_psnr,
 import numpy as np
 import cv2
 from filter import denoise_and_evaluate_dataset as filter
-from filter import denoise_and_evaluate_dataset as fourier
+from fourier_filter import denoise_and_evaluate_dataset as fourier
 
 gaus_test = torch.load("Gaussian_test.pt", weights_only=False)
 sp_test = torch.load("S&P_test.pt", weights_only=False)
@@ -24,8 +24,8 @@ print("loaded Unet_Gaussian Successfully!")
 model.eval()
 model.to(device)
 
-metrics = {
-    'original': {'psnrs': [], 'ssims': []}
+metrics_gaus = {
+    'Unet': {'psnrs': [], 'ssims': []}
     }
 with torch.no_grad():
     for noisy_imgs, original_imgs in gaussian_dataloader:
@@ -42,10 +42,9 @@ with torch.no_grad():
 
             psnr = calculate_psnr(img_org, img_out)
             ssim = calculate_ssim(img_org, img_out)
-            metrics['original']['psnrs'].append(psnr)
-            metrics['original']['ssims'].append(ssim)
+            metrics_gaus['Unet']['psnrs'].append(psnr)
+            metrics_gaus['Unet']['ssims'].append(ssim)
 
-metric_gaus = print_metrics(metrics, "Gaus")
 
 # Evaluate the salt and pepper test dataset using the metrics
 model = UNet()
@@ -54,8 +53,8 @@ print("loaded Unet_S&P Successfully!")
 model.eval()
 model.to(device)
 
-metrics = {
-    'original': {'psnrs': [], 'ssims': []}
+metrics_sp = {
+    'Unet': {'psnrs': [], 'ssims': []}
     }
 with torch.no_grad():
     for noisy_imgs, original_imgs in salt_pepper_dataloader:
@@ -72,21 +71,30 @@ with torch.no_grad():
 
             psnr = calculate_psnr(img_org, img_out)
             ssim = calculate_ssim(img_org, img_out)
-            metrics['original']['psnrs'].append(psnr)
-            metrics['original']['ssims'].append(ssim)
+            metrics_sp['Unet']['psnrs'].append(psnr)
+            metrics_sp['Unet']['ssims'].append(ssim)
 
-metric_gaus = print_metrics(metrics, "S&P")
 
 def evaluate_conventional_methods():
+
+    print("\n====================================================")
+    print("||               Gaussian Noisy Images            ||")
+    print("====================================================")
     gaus_filter_metric = filter(gaus_test)
-    sp_filter_metric = filter(sp_test)
-
-    gaus_fourier_metric = fourier(gaus_test)
-    sp_fourier_metric = fourier(sp_test)
-
     print_metrics(gaus_filter_metric)
-    print_metrics(sp_filter_metric)
+    gaus_fourier_metric = fourier(gaus_test)
     print_metrics(gaus_fourier_metric)
+    print_metrics(metrics_gaus)
+    print("====================================================")
+
+    print("\n====================================================")
+    print("||           Salt and Pepper Noisy Images         ||")
+    print("====================================================")
+    sp_filter_metric = filter(sp_test)
+    print_metrics(sp_filter_metric)
+    sp_fourier_metric = fourier(sp_test)
     print_metrics(sp_fourier_metric)
+    print_metrics(metrics_gaus)
+    print("====================================================")
 
 evaluate_conventional_methods()

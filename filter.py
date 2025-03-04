@@ -57,17 +57,11 @@ def denoise_and_evaluate(img_array, original_img_array, name="", save_to_disk=Fa
     return metrics
 
 def denoise_and_evaluate_dataset(dataset):
-    start = time.time()
-    print("Denoising process ... ", end="")
     noisy_images, clean_images = load_images_from_dataset(dataset)
     metrics = denoise_and_evaluate(noisy_images, clean_images, save_to_disk=False)
-    end = time.time()
-    print(f"Total time elapsed: {(end - start):.4f} s")
     return metrics
 
 def denoise_and_evaluate_default_folder():
-    start = time.time()
-    print("Denoising process ... ", end="")
     original_dataset = load_images_from_folder(ORIGINAL_DIR)
     gaussian_dataset = load_images_from_folder(GAUSSIAN_DIR)
     salt_pepper_dataset = load_images_from_folder(SALT_PEPPER_DIR)
@@ -75,8 +69,7 @@ def denoise_and_evaluate_default_folder():
     print_metrics(gaussian_metrics, "gaussian")
     salt_pepper_metrics = denoise_and_evaluate(salt_pepper_dataset, original_dataset, "salt_pepper", save_to_disk=True)
     print_metrics(salt_pepper_metrics, "salt_pepper")
-    end = time.time()
-    print(f"Total time elapsed: {(end - start):.4f} s")
+
 
 if __name__ == "__main__":
     cProfile.run('denoise_and_evaluate_default_folder()', sort = 1)

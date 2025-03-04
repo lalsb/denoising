@@ -27,8 +27,7 @@ def load_and_preprocess_image(image_path):
 
 def add_gaussian_noise(image, var):
     float_image = img_as_float(image)
-
-    noise = np.random.gauss(0, sqrt(var), float_image.shape)
+    noise = np.random.normal(0, sqrt(var), float_image.shape)
     noisy_image = float_image + noise
     noisy_image = np.clip(noisy_image, 0, 1)
     ubyte_image = img_as_ubyte(noisy_image)

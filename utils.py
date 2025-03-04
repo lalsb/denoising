@@ -43,13 +43,11 @@ def calculate_ssim(original, denoised):
     return structural_similarity(original, denoised, channel_axis=2, data_range=255)
 
 def print_metrics(metrics, dataset_name=""):
-    print(f"\n\n********** {dataset_name.capitalize()} Mean Metrics ***********")
     mean_metrics = {filter_name: {
         'mean_psnr': np.mean(metrics[filter_name]['psnrs']),
         'mean_ssim': np.mean(metrics[filter_name]['ssims'])
     } for filter_name in metrics}
-
+    print(f"\r", end="", flush=True)
     for filter_name, mean_metric in mean_metrics.items():
         print(f"{filter_name.capitalize()} (PSNR, SSIM): {mean_metric['mean_psnr']:.2f} dB, {mean_metric['mean_ssim']:.3f}")
 
-    print("")
