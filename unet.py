@@ -1,24 +1,21 @@
+import os
 import cv2
 import numpy as np
-import os
-from glob import glob
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.transforms as transforms
-from torchvision import datasets
 from torch.utils.data import Dataset, DataLoader, random_split
 from skimage.util import random_noise, img_as_float, img_as_ubyte
 from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES, NO_PREVIEW
 from utils import load_images_from_folder, calculate_psnr, calculate_ssim, print_metrics
-import pytorch_msssim
 
 # Global vars
 TRAIN_EPOCHS = 100
 TEST_EPOCHS = 36
 BATCH_SIZE = 16
 TRAIN_RATIO = 0.8
+EPOCHS = 10
 
 # Dataset (noisy image, original image)
 class DenoisingDataset(Dataset):
@@ -32,22 +29,32 @@ class DenoisingDataset(Dataset):
     def __getitem__(self, i):
         return self.noisy_images[i], self.clean_images[i]
 
-# Load image arrays
-original_img_array = load_images_from_folder(ORIGINAL_DIR)
-gaussian_img_array = load_images_from_folder(GAUSSIAN_DIR)
-salt_pepper_img_array = load_images_from_folder(SALT_PEPPER_DIR)
+def dataPrep():
+    # Load image arrays
+    original_img_array = load_images_from_folder(ORIGINAL_DIR)
+    gaussian_img_array = load_images_from_folder(GAUSSIAN_DIR)
+    salt_pepper_img_array = load_images_from_folder(SALT_PEPPER_DIR)
 
-# Create datasets
-gaussian_datasets = DenoisingDataset(gaussian_img_array, original_img_array)
-salt_pepper_datasets = DenoisingDataset(salt_pepper_img_array, original_img_array)
+    # Create datasets
+    gaussian_datasets = DenoisingDataset(gaussian_img_array, original_img_array)
+    salt_pepper_datasets = DenoisingDataset(salt_pepper_img_array, original_img_array)
 
-# Split data
-gaussian_train_datasets, gaussian_test_datasets = random_split(gaussian_datasets, [TRAIN_RATIO, 1 - TRAIN_RATIO])
-salt_pepper_train_datasets, salt_pepper_test_datasets = random_split(salt_pepper_datasets, [TRAIN_RATIO, 1 - TRAIN_RATIO])
+    return gaussian_datasets, salt_pepper_datasets
 
-# Create dataloader
-gaussian_dataloader = DataLoader(gaussian_train_datasets, shuffle=True, batch_size=BATCH_SIZE)
-salt_pepper_dataloader = DataLoader(salt_pepper_train_datasets, shuffle=True, batch_size=BATCH_SIZE) 
+def createTestSplits(gaussian_datasets, salt_pepper_datasets):
+    # Split data
+    gaussian_train_datasets, gaussian_test_datasets = random_split(gaussian_datasets, [TRAIN_RATIO, 1 - TRAIN_RATIO])
+    salt_pepper_train_datasets, salt_pepper_test_datasets = random_split(salt_pepper_datasets, [TRAIN_RATIO, 1 - TRAIN_RATIO])
+
+    # Save Test Splits for Evaluation
+    torch.save(gaussian_test_datasets, "Gaussian_test.pt")
+    torch.save(salt_pepper_test_datasets, "S&P_test.pt")
+
+    # Create dataloader
+    gaussian_dataloader = DataLoader(gaussian_train_datasets, shuffle=True, batch_size=BATCH_SIZE)
+    salt_pepper_dataloader = DataLoader(salt_pepper_train_datasets, shuffle=True, batch_size=BATCH_SIZE)
+
+    return gaussian_dataloader, salt_pepper_dataloader
 
 # Definiere das U-Net Modell
 class UNet(nn.Module):
@@ -144,94 +151,81 @@ class UNet(nn.Module):
         x = self.final(x)
         return self.activation(x)
 
-# Modell, Loss und Optimizer definieren
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = UNet().to(device)
+def train_Models(gaussian_dataloader, salt_pepper_dataloader):
+    # Modell, Loss und Optimizer definieren
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = UNet().to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-def loss_function(output, target):
-    mse = nn.MSELoss()(output, target)
-    ssim = 1 - pytorch_msssim.SSIM(win_size=11)(output, target)  # SSIM als Differenz
-    return 0.8 * mse + 0.2 * ssim  # Gewichtung: MSE = 80%, SSIM = 20%
+    # Training Gaussian Unet
+    for epoch in range(EPOCHS):
+        model.train()
+        total_loss = 0
+        for noisy_imgs, clean_imgs in gaussian_dataloader:
+            noisy_imgs, clean_imgs = noisy_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0, clean_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0
+            optimizer.zero_grad()
+            outputs = model(noisy_imgs)
+            loss = criterion(outputs, clean_imgs)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        print(f"Epoch [{epoch+1}/{EPOCHS}], Loss: {total_loss/len(salt_pepper_dataloader):.4f}")
 
-criterion = nn.MSELoss()
+    torch.save(model.state_dict(), "Unet_Gaussian.pth")
 
-#optimizer = optim.Adam(model.parameters(), lr=0.001)
-optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
+    # Training S&P Unet
+    for epoch in range(EPOCHS):
+        model.train()
+        total_loss = 0
+        for noisy_imgs, clean_imgs in salt_pepper_dataloader:
+            noisy_imgs, clean_imgs = noisy_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0, clean_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0
+            optimizer.zero_grad()
+            outputs = model(noisy_imgs)
+            loss = criterion(outputs, clean_imgs)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        print(f"Epoch [{epoch+1}/{EPOCHS}], Loss: {total_loss/len(salt_pepper_dataloader):.4f}")
 
-# Learning Rate Scheduler
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
+    torch.save(model.state_dict(), "Unet_S&P.pth")
 
+    # For Examples
+    return noisy_imgs, outputs, clean_imgs
 
-# Training
-EPOCHS = 20
-for epoch in range(EPOCHS):
-    model.train()
-    total_loss = 0
-    for noisy_imgs, clean_imgs in salt_pepper_dataloader:
-        noisy_imgs, clean_imgs = noisy_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0, clean_imgs.permute(0, 3, 1, 2).to(device).float() / 255.0
-        optimizer.zero_grad()
-        outputs = model(noisy_imgs)
-        loss = loss_function(outputs, clean_imgs)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-    print(f"Epoch [{epoch+1}/{EPOCHS}], Loss: {total_loss/len(salt_pepper_dataloader):.4f}")
+def visualize(noisy_imgs, outputs, clean_imgs):
+    # Visualisierung eines Beispiels
+    img_noisy = np.transpose(noisy_imgs[0].cpu().detach().numpy(), (1,2,0))
+    img_noisy = (img_noisy * 255).astype(np.uint8)
+    img_noisy = cv2.cvtColor(img_noisy, cv2.COLOR_BGR2RGB)
 
-    scheduler.step()
+    img_out = np.transpose(outputs[0].cpu().detach().numpy(), (1,2,0))
+    img_out = cv2.cvtColor(img_out, cv2.COLOR_BGR2RGB)
+    img_out = (img_out * 255).astype(np.uint8)
 
-#torch.save(model, "Model_Gaussian")
+    img_org = np.transpose(clean_imgs[0].cpu().detach().numpy(), (1,2,0))
+    img_org = (img_org * 255).astype(np.uint8)
+    img_org = cv2.cvtColor(img_org, cv2.COLOR_BGR2RGB)
 
-# Visualisierung eines Beispiels
-img_noisy = np.transpose(noisy_imgs[0].cpu().detach().numpy(), (1,2,0))
-img_noisy = (img_noisy * 255).astype(np.uint8)
-img_noisy = cv2.cvtColor(img_noisy, cv2.COLOR_BGR2RGB)
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    axes[0].imshow(img_noisy)
+    axes[0].set_title('Noisy Image')
+    axes[1].imshow(img_out)
+    axes[1].set_title('Denoised Image')
+    axes[2].imshow(img_org)
+    axes[2].set_title('Original Image')
+    plt.show()
 
-img_out = np.transpose(outputs[0].cpu().detach().numpy(), (1,2,0))
-img_out = cv2.cvtColor(img_out, cv2.COLOR_BGR2RGB)
-img_out = (img_out * 255).astype(np.uint8)
+def main():
 
-img_org = np.transpose(clean_imgs[0].cpu().detach().numpy(), (1,2,0))
-img_org = (img_org * 255).astype(np.uint8)
-img_org = cv2.cvtColor(img_org, cv2.COLOR_BGR2RGB)
+    # Train and save Models
+    model_path = "Unet_Gaussian.pth"
+    if not os.path.exists(model_path):
+        
+        gaussian_datasets, salt_pepper_datasets = dataPrep()
+        gaussian_dataloader, salt_pepper_dataloader = createTestSplits(gaussian_datasets, salt_pepper_datasets)
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-axes[0].imshow(img_noisy)
-axes[0].set_title('Noisy Image')
-axes[1].imshow(img_out)
-axes[1].set_title('Denoised Image')
-axes[2].imshow(img_org)
-axes[2].set_title('Original Image')
-plt.show()
+        train_Models(gaussian_dataloader, salt_pepper_dataloader)
 
-
-
-'''
-#Lade 1 Bild aus jedem Datensatz
-noisy_gaussian, clean_gaussian = next(iter(gaussian_dataloader))
-noisy_salt_pepper, clean_salt_pepper = next(iter(salt_pepper_dataloader))
-    
-    
-# Erstelle das Plot
-fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-print(np.shape(noisy_gaussian))
-# Zeige das Bild mit Gaussian Noise
-axes[0, 0].imshow(noisy_gaussian.squeeze())
-axes[0, 0].set_title('noisy_gaussian')
-axes[0, 0].axis('off')
-    
-axes[0, 1].imshow(clean_gaussian.squeeze())
-axes[0, 1].set_title('clean_gaussian')
-axes[0, 1].axis('off')
-    
-# Zeige das Bild mit Salt and Pepper Noise
-axes[1, 0].imshow(noisy_salt_pepper.squeeze())
-axes[1, 0].set_title('noisy_salt_pepper')
-axes[1, 0].axis('off')
-    
-axes[1, 1].imshow(clean_salt_pepper.squeeze())
-axes[1, 1].set_title('clean_salt_pepper')
-axes[1, 1].axis('off')
-    
-plt.tight_layout()
-plt.show()
-'''
+if __name__ == "__main__":
+    main()
