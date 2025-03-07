@@ -6,48 +6,39 @@ import numpy as np
 from config import ORIGINAL_DIR, GAUSSIAN_DIR, SALT_PEPPER_DIR, FOURIER_PATH, LOWPASS_CUTOFF, MAX_IMAGES
 from utils import *
 
-def apply_fourier_lowpass_filter(image, cutoff=30):
-    """
-    Apply a Fourier low-pass filter to each color channel of the image using np.fft.
-    :param image: Input image (BGR format).
-    :param cutoff: Cutoff frequency for the low-pass filter.
-    :return: The denoised image after applying the Fourier low-pass filter.
-    """
-    # Split the image into its BGR channels
-    channels = cv2.split(image)
-    
-    # Apply Fourier low-pass filter to each channel
+def apply_fourier_lowpass_filter(image, radius=20):
+
+    h, w, _ = image.shape
     filtered_channels = []
-    for channel in channels:
-        # Apply the Fast Fourier Transform (FFT)
-        f = np.fft.fft2(channel)
-        fshift = np.fft.fftshift(f)  # Shift zero frequency to the center
-        
-        # Create a mask for low-pass filtering (zero out high-frequency components)
-        rows, cols = channel.shape
-        crow, ccol = rows // 2, cols // 2
-        
-        # Set the center region to pass the low frequencies and zero out high frequencies
-        mask = np.zeros((rows, cols))
-        mask[crow - cutoff:crow + cutoff, ccol - cutoff:ccol + cutoff] = 1
-        
-        # Apply the mask to the frequency domain representation
-        fshift = fshift * mask
-        
-        # Inverse FFT to get the image back from the frequency domain
-        f_ishift = np.fft.ifftshift(fshift)
-        img_back = np.fft.ifft2(f_ishift)
-        
-        # Take the real part of the inverse FFT and normalize to range 0-255
-        img_back = np.abs(img_back)
-        img_back = np.uint8(np.clip(img_back, 0, 255))
-        
-        filtered_channels.append(img_back)
+    channels = cv2.split(image)
+
+    for channel in channels:  # Process each BGR channel separately
+
+        # Perform FFT and shift zero frequency to center
+        dft = cv2.dft(np.float32(channel), flags=cv2.DFT_COMPLEX_OUTPUT)
+        dft_shifted = np.fft.fftshift(dft)
+
+        # Create a circular mask
+        mask = np.zeros((h, w, 2), np.uint8)
+        cy = mask.shape[0] // 2
+        cx = mask.shape[1] // 2
+        cv2.circle(mask, (cx,cy), radius, (255,255,255), -1)[0]
+
+        # Apply mask and inverse transform
+        dft_filtered = dft_shifted * mask
+        dft_ishifted = np.fft.ifftshift(dft_filtered)
+        img_back = cv2.idft(dft_ishifted)
+        img_back = cv2.magnitude(img_back[:, :, 0], img_back[:, :, 1])
+
+        # Normalize result to 0-255
+        img_back = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX)
+        filtered_channels.append(img_back.astype(np.uint8))
+
+    # Merge channels back into a BGR image
+    filtered_image = cv2.merge(filtered_channels)
     
-    # Merge the filtered channels back together
-    denoised_image = cv2.merge(filtered_channels)
-    
-    return denoised_image
+    return filtered_image
+
 
 def denoise_and_evaluate(dataset, original_dataset, dataset_name="", save_to_disk=False):
     os.makedirs(FOURIER_PATH, exist_ok=True)
@@ -60,7 +51,7 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name="", save_to_dis
         original = original_dataset[i]
 
         # Apply Fourier low-pass filter
-        fourier_denoised = apply_fourier_lowpass_filter(noisy_image, cutoff=LOWPASS_CUTOFF)
+        fourier_denoised = apply_fourier_lowpass_filter(noisy_image)
         
         # Calculate PSNR and SSIM
         fourier_psnr = calculate_psnr(original, fourier_denoised)
