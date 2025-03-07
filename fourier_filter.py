@@ -74,7 +74,7 @@ def denoise_and_evaluate(dataset, original_dataset, dataset_name="", save_to_dis
             # Save results as PNGs
             cv2.imwrite(os.path.join(FOURIER_PATH, f"{dataset_name}_fourier_{i+1:04d}.png"), fourier_denoised)
 
-        print(f"\rFourier denoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
+        print(f"\rDenoising process ... {i+1} of {MAX_IMAGES}", end="", flush=True)
 
     return metrics
 
